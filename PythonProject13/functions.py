@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 from time import sleep
 
@@ -52,34 +53,42 @@ class CostumeTextFile:
                 self.file_path = os.getcwd()
             else:
                 self.file_path = file_path
-            self.full_path = rf"{self.file_path}\{self.file_name}"
+            self.full_path = os.path.join(self.file_path, self.file_name)
             self.file = None
-            match self.type:
-                case "python":
-                    self.write_new_line(f"#!/bin/python\n\n")
-                    if not os.name == 'nt' and self.file is not None:
-                        os.system(f"chmod +x {self.full_path}")
-                case "bash":
-                    self.write_new_line(f"#!/bin/bash\n\n")
-                    if not os.name == 'nt'and self.file is not None:
-                        os.system(f"chmod +x {self.full_path}")
+            # Note: the shebang is written and the file is made executable
+            # in create_file(), once self.file actually points to an open
+            # file handle. Doing it here was a no-op, since self.file is
+            # always None at construction time.
 
         def __repr__(self):
             return f"File Name: {self.file_name}\nFile Type:{self.type}\nLocation:{self.file_path}"
 
         def create_file(self,replace_if_exist: str):
+            is_new_file = False
             if os.path.exists(self.full_path):
                 print(f"file {self.file_name} already exist at \n {self.file_path}")
                 match replace_if_exist:
                     case "y":
                         os.remove(self.full_path)
                         self.file = open(self.full_path, "x+t")
+                        is_new_file = True
                     case "e":
                         self.file = open(self.full_path, "r+t")
                     case _:
                         self.file = None
             else:
-                return open(self.full_path,"x+t")
+                self.file = open(self.full_path, "x+t")
+                is_new_file = True
+
+            if is_new_file:
+                if self.type == "python":
+                    self.write_new_line("#!/bin/python\n")
+                elif self.type == "bash":
+                    self.write_new_line("#!/bin/bash\n")
+                if self.type in ("python", "bash") and os.name != 'nt':
+                    os.chmod(self.full_path, os.stat(self.full_path).st_mode | 0o111)
+
+            return self.file
 
         def delete_file(self)->bool:
             if not self.file is None:
@@ -159,7 +168,7 @@ class CostumeCommand:
         def add_to_command_list(self):
             try:
                 command_list_file = open("command_list.txt","a+t")
-                command_list_file.write(f"{self.name}-space-{self.script_file.file_name}-space-{self.script_file.file_path}-space-{self.script_file.type}")
+                command_list_file.write(f"{self.name}-space-{self.script_file.file_name}-space-{self.script_file.file_path}-space-{self.script_file.type} \n")
             except Exception as e:
                 print(f"somthing went wrong \n {e}")
             finally:
@@ -185,7 +194,9 @@ def create_new_file():
     new_file.create_file(user_choice)
     new_file.add_new_file_to_list()
     new_file.create_command_to_file(input("enter  command name: "))
-    if os.name == 'posix' : os.system(f"nano {new_file.full_path}")
+    new_file.close_file()
+    if os.name == 'posix':
+        subprocess.run(["nano", new_file.full_path])
 
 def show_file_list():
     try:
